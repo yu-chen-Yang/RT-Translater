@@ -87,6 +87,18 @@ class Pipeline:
             self._config.interval_s, self._config.max_active_s, self._config.silence_tail_ms,
         )
 
+    def set_target_language(self, target_language: str) -> None:
+        """Switches translation direction on the fly (e.g. zh<->en), callable from
+        the UI thread while the pipeline is running. Drops whatever utterance was
+        in progress, since its context prompt and any partial text were biased
+        toward the old direction."""
+        self._translator.set_target_language(target_language)
+        self._context_prompt = None
+        self._buffer.reset()
+        self._commit_flag.clear()
+        self._overlay.clear_all()
+        logger.info("Translation target language switched to %s", target_language)
+
     def stop(self) -> None:
         self._capture.stop()
         self._stop_event.set()

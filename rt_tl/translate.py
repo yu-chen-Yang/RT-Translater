@@ -48,6 +48,9 @@ class Translator:
         self._target = target_language
         self._ready_pairs: set[tuple[str, str]] = set()
 
+    def set_target_language(self, target_language: str) -> None:
+        self._target = target_language
+
     def translate(self, text: str, source_language: str) -> Optional[str]:
         if source_language == self._target:
             return text  # nothing to do

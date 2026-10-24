@@ -17,7 +17,15 @@ pip install -r requirements.txt
 
 Linux 下 `soundcard` 依赖 PulseAudio（或兼容的 PipeWire-pulse），确保系统已启用。
 
-## 运行
+## 启动 / 关闭
+
+**Windows**：双击 `start.bat`（内部用 `pythonw` 启动，不会弹黑色命令行窗口）。启动后右下角系统托盘会出现一个蓝色"译"字图标——右键它可以切换翻译方向（译成中文/译成英文），或点"退出"关闭程序。日志写在 `logs/rt_tl.log`。
+
+**Linux**：`./start.sh`（首次需要 `chmod +x start.sh`）。同样是后台启动 + 托盘图标退出，日志在 `logs/rt_tl.log`。
+
+如果想开机自动启动：Windows 把 `start.bat` 的快捷方式放进 `shell:startup`（Win+R 输入这个打开启动文件夹）；Linux 视桌面环境加到自己的自启动应用里，或用 systemd user service。两种都没有默认配置，需要手动加。
+
+手动命令行运行（方便调参/看日志）：
 
 ```bash
 python -m rt_tl.main --target-language zh
@@ -27,23 +35,28 @@ python -m rt_tl.main --target-language zh
 
 - `--device-keyword 关键词`：只监听名字匹配该关键词的输出设备（比如你给 Discord 单独配了一个虚拟输出 sink/设备，可以按名字锁定）。
 - `--source-language en`：强制源语言，不填则按段自动检测。
-- `--target-language zh`：目标语言（ISO 639-1，如 zh/en/ja/ko）。
+- `--target-language zh`：启动时的默认目标语言（ISO 639-1，如 zh/en/ja/ko），运行中可以用托盘菜单切换 zh/en。
 - `--whisper-model small`：tiny/base/small/medium/large-v3，模型越大越准但越慢。
-- `--whisper-device cpu|cuda|auto`：有 NVIDIA GPU 建议 `cuda` 提速。
+- `--whisper-device cpu|cuda|auto`：有 NVIDIA GPU 建议 `cuda` 提速（Windows 下需要先 `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`，代码会自动把这两个包的 DLL 目录加进 PATH）。
+- `--interval-s` / `--preview-window-s` / `--max-active-s`：调实时性与准确度的三个旋钮，见下方架构说明。
 
 ## 架构
 
+**预览-定稿（preview-then-commit）模式**：当前这句话从真正开头持续累积音频，每 `interval_s` 秒重新转写一次最近 `preview_window_s` 秒作为"实时预览行"（会不断自我修正），检测到停顿（`silence_tail_ms`）或说太久撞到 `max_active_s` 上限时，用这句话从头到尾的完整音频重新转写一次，定稿成不再变化的"历史行"，随后开始下一句。
+
 ```
-系统/应用输出(loopback) → 30ms音频块 → VAD分段(webrtcvad)
-    → 完整语句片段 → 队列 → [faster-whisper 转写 + 语种检测]
-    → [argostranslate 翻译] → 悬浮窗 push(原文, 译文)
+系统/应用输出(loopback) → 30ms音频块 → 累积缓冲区(buffer.py)
+                                    ├─ 停顿检测(vad.py: PauseTrigger) → 触发定稿
+                                    └─ 每隔interval_s秒 → 取最近preview_window_s秒 → 预览转写 → 悬浮窗"实时行"
+   定稿时 → 取完整音频 → 转写(语种检测) → 翻译 → 悬浮窗"历史行" → 开始下一句
 ```
 
 - `rt_tl/audio/capture.py`：跨平台 loopback 采集线程。
-- `rt_tl/vad.py`：基于 webrtcvad 的分段器，把连续音频切成一句句话。
-- `rt_tl/stt.py`：faster-whisper 封装。
-- `rt_tl/translate.py`：argostranslate 封装，按需自动装语言包。
-- `rt_tl/overlay.py`：PyQt6 悬浮字幕窗口，线程安全（`push()` 用 Qt signal 跨线程更新 UI）。
+- `rt_tl/buffer.py`：当前这句话的音频缓冲区（支持只取尾部一段做预览，避免越说越长转写越慢）。
+- `rt_tl/vad.py`：`PauseTrigger`，检测说话人停顿，用来提前触发定稿（而不是死等固定间隔）。
+- `rt_tl/stt.py`：faster-whisper 封装，支持用上一句定稿文字做 `initial_prompt` 提升连贯性；Windows 下负责把 cuBLAS/cuDNN 的 DLL 目录注册进 PATH。
+- `rt_tl/translate.py`：argostranslate 封装，按需自动装语言包，支持运行时切换目标语言。
+- `rt_tl/overlay.py`：PyQt6 悬浮字幕窗口 + 系统托盘图标；线程安全（`push_live()`/`commit_live()` 用 Qt signal 跨线程更新 UI），窗口随内容高度自适应、水平居中贴底部、鼠标可穿透。
 - `rt_tl/pipeline.py`：把以上串起来，STT/翻译跑在独立 worker 线程，不阻塞音频采集。
 
 ## 已知限制 / 后续可做

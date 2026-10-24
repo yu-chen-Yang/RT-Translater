@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import logging
 
+from PyQt6.QtGui import QActionGroup
+
 from .config import Config
 from .overlay import run_overlay_app
 from .pipeline import Pipeline
@@ -48,6 +50,21 @@ def parse_args() -> Config:
     return config
 
 
+def _add_direction_toggle(overlay, pipeline, initial_target: str) -> None:
+    """Adds "译成中文" / "译成英文" checkable options to the tray menu, letting the
+    translation direction be flipped at runtime without restarting the app."""
+    group = QActionGroup(overlay.tray_menu)
+    group.setExclusive(True)
+
+    to_zh = overlay.tray_menu.addAction("译成中文")
+    to_en = overlay.tray_menu.addAction("译成英文")
+    for action, lang in ((to_zh, "zh"), (to_en, "en")):
+        action.setCheckable(True)
+        action.setChecked(lang == initial_target)
+        group.addAction(action)
+        action.triggered.connect(lambda checked, lang=lang: pipeline.set_target_language(lang))
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = parse_args()
@@ -58,6 +75,7 @@ def main() -> None:
         pipeline = Pipeline(config, overlay)
         pipeline_holder["pipeline"] = pipeline
         pipeline.start()
+        _add_direction_toggle(overlay, pipeline, config.target_language)
 
     try:
         run_overlay_app(

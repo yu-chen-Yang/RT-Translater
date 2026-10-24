@@ -7,14 +7,33 @@ getting replaced/corrected as more audio comes in until it's committed too.
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from PyQt6.QtWidgets import QApplication, QLabel, QMenu, QSystemTrayIcon, QVBoxLayout, QWidget
+
+
+def _make_tray_icon() -> QIcon:
+    """Draws a small round icon at runtime instead of shipping an image asset."""
+    size = 64
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor("#2d7dfa"))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(2, 2, size - 4, size - 4)
+    painter.setPen(QColor("white"))
+    font = QFont("Microsoft YaHei UI", 26, QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "译")
+    painter.end()
+    return QIcon(pixmap)
 
 
 class SubtitleOverlay(QWidget):
     live_updated = pyqtSignal(str, str)    # (original_text, translated_text)
     committed = pyqtSignal(str, str)       # (original_text, translated_text)
     live_cleared = pyqtSignal()
+    all_cleared = pyqtSignal()
 
     def __init__(
         self,
@@ -61,6 +80,12 @@ class SubtitleOverlay(QWidget):
         self.live_updated.connect(self._on_live_updated)
         self.committed.connect(self._on_committed)
         self.live_cleared.connect(self._on_live_cleared)
+        self.all_cleared.connect(self._on_all_cleared)
+
+        # Set by run_overlay_app() so main.py can add more actions (e.g. a
+        # translation-direction toggle) to the tray menu after the pipeline exists.
+        self.tray: QSystemTrayIcon | None = None
+        self.tray_menu: QMenu | None = None
 
     def _reposition(self) -> None:
         """Keeps the box horizontally centered and anchored to a fixed distance
@@ -99,6 +124,11 @@ class SubtitleOverlay(QWidget):
         self._live_html = None
         self._render()
 
+    def _on_all_cleared(self) -> None:
+        self._committed_html = None
+        self._live_html = None
+        self._render()
+
     def push_live(self, original: str, translated: str) -> None:
         """Thread-safe: update the in-progress (still-correctable) line."""
         self.live_updated.emit(original, translated)
@@ -111,13 +141,34 @@ class SubtitleOverlay(QWidget):
         """Thread-safe: drop the in-progress line without committing anything (e.g. it was silence)."""
         self.live_cleared.emit()
 
+    def clear_all(self) -> None:
+        """Thread-safe: drop both lines (e.g. right after switching translation direction)."""
+        self.all_cleared.emit()
+
 
 def run_overlay_app(overlay_ready_callback=None, **overlay_kwargs):
-    """Creates the QApplication + overlay, invokes the callback with the overlay
+    """Creates the QApplication + overlay + a system tray icon (for quitting
+    without touching Task Manager), invokes the callback with the overlay
     instance once it's shown, then blocks running the Qt event loop."""
     app = QApplication.instance() or QApplication([])
+    app.setQuitOnLastWindowClosed(False)  # the overlay has no titlebar/close button; only the tray quits it
+
     overlay = SubtitleOverlay(**overlay_kwargs)
     overlay.show()
+
+    tray = QSystemTrayIcon(_make_tray_icon(), app)
+    tray.setToolTip("RT-TL 实时字幕翻译")
+    menu = QMenu()
+    overlay.tray = tray
+    overlay.tray_menu = menu
+
     if overlay_ready_callback:
         overlay_ready_callback(overlay)
+
+    menu.addSeparator()
+    quit_action = menu.addAction("退出")
+    quit_action.triggered.connect(app.quit)
+    tray.setContextMenu(menu)
+    tray.show()
+
     app.exec()
