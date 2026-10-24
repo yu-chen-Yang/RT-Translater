@@ -56,8 +56,8 @@ def _add_direction_toggle(overlay, pipeline, initial_target: str) -> None:
     group = QActionGroup(overlay.tray_menu)
     group.setExclusive(True)
 
-    to_zh = overlay.tray_menu.addAction("译成中文")
-    to_en = overlay.tray_menu.addAction("译成英文")
+    to_zh = overlay.tray_menu.addAction("Translate to Chinese")
+    to_en = overlay.tray_menu.addAction("Translate to English")
     for action, lang in ((to_zh, "zh"), (to_en, "en")):
         action.setCheckable(True)
         action.setChecked(lang == initial_target)

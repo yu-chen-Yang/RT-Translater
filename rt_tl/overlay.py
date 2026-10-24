@@ -157,7 +157,7 @@ def run_overlay_app(overlay_ready_callback=None, **overlay_kwargs):
     overlay.show()
 
     tray = QSystemTrayIcon(_make_tray_icon(), app)
-    tray.setToolTip("RT-TL 实时字幕翻译")
+    tray.setToolTip("RT-TL Live Subtitle Translator")
     menu = QMenu()
     overlay.tray = tray
     overlay.tray_menu = menu
@@ -166,7 +166,7 @@ def run_overlay_app(overlay_ready_callback=None, **overlay_kwargs):
         overlay_ready_callback(overlay)
 
     menu.addSeparator()
-    quit_action = menu.addAction("退出")
+    quit_action = menu.addAction("Quit")
     quit_action.triggered.connect(app.quit)
     tray.setContextMenu(menu)
     tray.show()
