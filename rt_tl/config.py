@@ -21,9 +21,10 @@ class Config:
     silence_tail_ms: int = 300         # pause length that commits the current segment
 
     # STT
-    whisper_model: str = "small"       # tiny/base/small/medium/large-v3; small balances speed/accuracy
-    whisper_device: str = "auto"       # "cpu", "cuda", or "auto"
-    whisper_compute_type: str = "int8"  # int8 is fast on CPU, float16 on GPU
+    stt_engine: str = "sensevoice"     # "sensevoice" (FunASR, stronger on Mandarin) or "whisper"
+    whisper_model: str = "small"       # tiny/base/small/medium/large-v3; small balances speed/accuracy; whisper engine only
+    whisper_device: str = "auto"       # "cpu", "cuda", or "auto"; applies to both engines
+    whisper_compute_type: str = "int8"  # int8 is fast on CPU, float16 on GPU; whisper engine only
     source_language: str | None = None  # None = auto-detect per segment
 
     # Translation

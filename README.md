@@ -5,7 +5,7 @@
 全链路离线、跨平台（Windows / Linux）：
 
 - **音频捕获**：`soundcard` 库的 loopback 录音 — Windows 下走 WASAPI loopback，Linux 下走 PulseAudio/PipeWire 的 monitor source。不需要虚拟声卡，也不需要 Discord Bot token，直接监听系统/默认输出设备（或用 `--device-keyword` 匹配特定虚拟 sink）。
-- **语音识别**：`faster-whisper`（CTranslate2），本地推理，支持自动语种检测。
+- **语音识别**：默认用阿里 FunASR 的 `SenseVoice-small`（对中文口语/嘈杂背景识别普遍强于 Whisper，CPU 上也很快），可用 `--stt-engine whisper` 切回 `faster-whisper`（CTranslate2，支持更多模型尺寸和 `initial_prompt` 上下文）。两者都支持自动语种检测，本地离线推理。
 - **翻译**：`argostranslate`，本地离线翻译模型（首次用到某个语言对时会自动下载安装一次，之后完全离线）。
 - **界面**：PyQt6 做的置顶透明悬浮窗，滚动显示「原文 + 译文」。
 
@@ -36,8 +36,9 @@ python -m rt_tl.main --target-language zh
 - `--device-keyword 关键词`：只监听名字匹配该关键词的输出设备（比如你给 Discord 单独配了一个虚拟输出 sink/设备，可以按名字锁定）。
 - `--source-language en`：强制源语言，不填则按段自动检测。
 - `--target-language zh`：启动时的默认目标语言（ISO 639-1，如 zh/en/ja/ko），运行中可以用托盘菜单切换 zh/en。
-- `--whisper-model small`：tiny/base/small/medium/large-v3，模型越大越准但越慢。
-- `--whisper-device cpu|cuda|auto`：有 NVIDIA GPU 建议 `cuda` 提速（Windows 下需要先 `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`，代码会自动把这两个包的 DLL 目录加进 PATH）。
+- `--stt-engine sensevoice|whisper`：语音识别引擎，默认 `sensevoice`。
+- `--whisper-model small`：tiny/base/small/medium/large-v3，模型越大越准但越慢（仅 `--stt-engine whisper` 时生效）。
+- `--whisper-device cpu|cuda|auto`：两个引擎都用这个参数选设备。SenseVoice 在 CPU 上已经足够快（实测几秒音频 CPU 推理 <0.3s）；给 `whisper` 引擎用 GPU 需要 NVIDIA GPU + `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`（代码会自动把这两个包的 DLL 目录加进 PATH）。
 - `--interval-s` / `--preview-window-s` / `--max-active-s`：调实时性与准确度的三个旋钮，见下方架构说明。
 
 ## 架构

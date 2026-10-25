@@ -20,9 +20,12 @@ def parse_args() -> Config:
                     help="force source language code (default: auto-detect)")
     p.add_argument("--target-language", default=config.target_language,
                     help="translation target language code, e.g. zh/en/ja")
+    p.add_argument("--stt-engine", default=config.stt_engine, choices=["sensevoice", "whisper"],
+                    help="speech-to-text engine: sensevoice (FunASR, stronger on Mandarin) or whisper")
     p.add_argument("--whisper-model", default=config.whisper_model,
-                    help="faster-whisper model size: tiny/base/small/medium/large-v3")
-    p.add_argument("--whisper-device", default=config.whisper_device, help="cpu/cuda/auto")
+                    help="faster-whisper model size: tiny/base/small/medium/large-v3 (whisper engine only)")
+    p.add_argument("--whisper-device", default=config.whisper_device,
+                    help="cpu/cuda/auto (applies to both engines)")
     p.add_argument("--overlay-width", type=int, default=config.overlay_width, help="overlay window width")
     p.add_argument("--overlay-bottom-margin", type=int, default=config.overlay_bottom_margin,
                     help="px from the bottom edge of the screen")
@@ -39,6 +42,7 @@ def parse_args() -> Config:
     config.device_keyword = args.device_keyword
     config.source_language = args.source_language
     config.target_language = args.target_language
+    config.stt_engine = args.stt_engine
     config.whisper_model = args.whisper_model
     config.whisper_device = args.whisper_device
     config.overlay_width = args.overlay_width

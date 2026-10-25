@@ -39,6 +39,7 @@ class Pipeline:
         self._overlay = overlay
 
         self._stt = SpeechToText(
+            engine=config.stt_engine,
             model_size=config.whisper_model,
             device=config.whisper_device,
             compute_type=config.whisper_compute_type,
@@ -133,6 +134,7 @@ class Pipeline:
             if result is None:
                 return
             text, detected_lang = result
+            logger.info("preview [%s]: %s", detected_lang, text)
             translated = self._translator.translate(text, detected_lang) or text
             self._overlay.push_live(text, translated)
         except Exception:
@@ -147,6 +149,7 @@ class Pipeline:
                 self._overlay.clear_live()
                 return
             text, detected_lang = result
+            logger.info("commit [%s]: %s", detected_lang, text)
             self._context_prompt = text[-200:]
             translated = self._translator.translate(text, detected_lang) or text
             self._overlay.commit_live(text, translated)

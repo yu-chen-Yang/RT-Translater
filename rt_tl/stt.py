@@ -1,8 +1,19 @@
-"""Local speech-to-text via faster-whisper (CTranslate2, fully offline)."""
+"""Local speech-to-text, fully offline.
+
+Two interchangeable engines:
+  - "sensevoice": Alibaba FunASR's SenseVoice-small - generally stronger on
+    Mandarin (colloquial speech, noisy/music-heavy backgrounds) than Whisper,
+    and the default here for that reason. Built-in language ID, no context
+    prompting support.
+  - "whisper": faster-whisper (CTranslate2) - supports `initial_prompt`
+    context biasing and a range of model sizes; kept as a fallback / for
+    non-Chinese-heavy use cases.
+"""
 from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from importlib import util as importlib_util
 from typing import Optional
@@ -41,30 +52,62 @@ def _register_nvidia_dll_dirs() -> None:
 _register_nvidia_dll_dirs()
 
 import numpy as np
-from faster_whisper import WhisperModel
+
+# SenseVoice emits a language tag that doesn't always match an ISO code Argos
+# understands (e.g. Cantonese); map those to the closest supported code.
+_SENSEVOICE_LANG_MAP = {"yue": "zh", "auto": "zh", "nospeech": None}
 
 
 class SpeechToText:
     def __init__(
         self,
+        engine: str = "sensevoice",
         model_size: str = "small",
         device: str = "auto",
         compute_type: str = "int8",
         language: Optional[str] = None,
     ):
+        self._engine = engine
         self._language = language
-        logger.info("Loading faster-whisper model=%s device=%s compute_type=%s", model_size, device, compute_type)
-        self._model = WhisperModel(model_size, device=device, compute_type=compute_type)
+
+        if engine == "whisper":
+            from faster_whisper import WhisperModel
+            logger.info("Loading faster-whisper model=%s device=%s compute_type=%s", model_size, device, compute_type)
+            self._model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        elif engine == "sensevoice":
+            self._init_sensevoice(device)
+        else:
+            raise ValueError(f"Unknown STT engine: {engine!r}")
+
+    def _init_sensevoice(self, device: str) -> None:
+        import torch
+        from funasr import AutoModel
+
+        if device == "auto":
+            resolved = "cuda:0" if torch.cuda.is_available() else "cpu"
+        elif device == "cuda":
+            resolved = "cuda:0"
+        else:
+            resolved = device
+
+        logger.info("Loading FunASR SenseVoice-small on device=%s", resolved)
+        self._sv_model = AutoModel(model="iic/SenseVoiceSmall", trust_remote_code=True, device=resolved)
 
     def transcribe(self, audio: np.ndarray, context_prompt: Optional[str] = None) -> Optional[tuple[str, str]]:
         """audio: mono float32 PCM at 16kHz.
 
-        `context_prompt` is the tail of the previous segment's transcript (if any);
-        passing it as Whisper's initial_prompt biases decoding toward continuing that
-        same sentence/topic, which helps a lot on short, otherwise ambiguous segments.
+        `context_prompt` is the tail of the previous segment's transcript (if
+        any). Only the "whisper" engine uses it (as Whisper's initial_prompt,
+        biasing decoding toward continuing that sentence/topic); SenseVoice
+        has no equivalent and ignores it.
 
         Returns (text, detected_language_code), or None if the segment had no speech.
         """
+        if self._engine == "whisper":
+            return self._transcribe_whisper(audio, context_prompt)
+        return self._transcribe_sensevoice(audio)
+
+    def _transcribe_whisper(self, audio: np.ndarray, context_prompt: Optional[str]) -> Optional[tuple[str, str]]:
         segments, info = self._model.transcribe(
             audio,
             language=self._language,
@@ -77,3 +120,27 @@ class SpeechToText:
         if not text:
             return None
         return text, info.language
+
+    def _transcribe_sensevoice(self, audio: np.ndarray) -> Optional[tuple[str, str]]:
+        from funasr.utils.postprocess_utils import rich_transcription_postprocess
+
+        results = self._sv_model.generate(
+            input=audio,
+            cache={},
+            language=self._language or "auto",
+            use_itn=True,
+            batch_size_s=60,
+        )
+        if not results:
+            return None
+
+        raw = results[0]["text"]
+        match = re.search(r"<\|(\w+)\|>", raw)
+        lang = _SENSEVOICE_LANG_MAP.get(match.group(1), match.group(1)) if match else "zh"
+        if lang is None:  # explicit "no speech" tag
+            return None
+
+        text = rich_transcription_postprocess(raw).strip()
+        if not text:
+            return None
+        return text, lang

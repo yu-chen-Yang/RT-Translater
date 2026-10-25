@@ -6,6 +6,14 @@ webrtcvad-wheels>=2.0.14; sys_platform == "win32"
 webrtcvad>=2.0.10; sys_platform != "win32"
 PyQt6>=6.6.0
 
+# Default STT engine (--stt-engine sensevoice): Alibaba FunASR's SenseVoice-small.
+# torch is pulled in as a dependency; for GPU use, install torch separately from
+# https://pytorch.org/get-started/locally/ for your CUDA version BEFORE this, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+funasr>=1.1.0
+modelscope>=1.15.0
+kaldi-native-fbank>=1.20
+
 # Optional, Windows + NVIDIA GPU only: enables --whisper-device cuda.
 # Not needed for CPU inference, and not installed by default since they're
 # large (~1.3GB). On Linux, install your distro's CUDA/cuDNN packages instead.
